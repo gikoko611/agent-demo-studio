@@ -200,6 +200,7 @@ private fun ProviderSettingsScreen(onBack: () -> Unit) {
     var busy by remember { mutableStateOf(false) }
     var freeOnly by remember { mutableStateOf(true) }
     var models by remember { mutableStateOf(listOf<ModelOption>()) }
+    var allModels by remember { mutableStateOf(listOf<ModelOption>()) }
     val mainHandler = remember { Handler(Looper.getMainLooper()) }
 
     Column(Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -221,6 +222,7 @@ private fun ProviderSettingsScreen(onBack: () -> Unit) {
                     val found = discoverModels(b, k)
                     mainHandler.post {
                         busy = false
+                        allModels = found
                         models = if (onlyFree) found.filter { it.free } else found
                         status = when {
                             found.isEmpty() -> "Model list မရရှိပါ။ Base URL / API Key ကိုစစ်ပါ။"
@@ -234,7 +236,7 @@ private fun ProviderSettingsScreen(onBack: () -> Unit) {
             Text("Free only", color = Color.White, fontSize = 12.sp)
             Checkbox(checked = freeOnly, onCheckedChange = {
                 freeOnly = it
-                models = if (it) models.filter { m -> m.free } else models
+                models = if (it) allModels.filter { m -> m.free } else allModels
             })
         }
         OutlinedTextField(value = model, onValueChange = { model = it }, label = { Text("Selected Model ID") }, singleLine = true, modifier = Modifier.fillMaxWidth())
@@ -251,7 +253,16 @@ private fun ProviderSettingsScreen(onBack: () -> Unit) {
         Text("Available Models · Tap to select", color = Green, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
         LazyColumn(Modifier.weight(1f).fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(7.dp)) {
             items(models, key = { it.id }) { item ->
-                Surface(onClick = { model = item.id }, color = if (model == item.id) Color(0xFF35483D) else Panel, shape = RoundedCornerShape(12.dp)) {
+                Surface(onClick = {
+                    model = item.id
+                    prefs.edit().putString("provider", provider).putString("base_url", baseUrl.trim()).putString("model", item.id).apply()
+                    try {
+                        SecretStore.write(context, apiKey)
+                        status = "✓ ${item.id} ကို ရွေးပြီး သိမ်းလိုက်ပါပြီ။ Chat မှာ အသုံးပြုနိုင်ပါပြီ။"
+                    } catch (e: Exception) {
+                        status = "Secure storage error: ${e.message ?: "unknown"}"
+                    }
+                }, color = if (model == item.id) Color(0xFF35483D) else Panel, shape = RoundedCornerShape(12.dp)) {
                     Column(Modifier.fillMaxWidth().padding(11.dp)) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Text(item.name, color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
