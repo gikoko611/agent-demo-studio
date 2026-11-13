@@ -63,6 +63,10 @@ private fun AgentStudioApp() {
         )
     }
     var draft by remember { mutableStateOf("") }
+    var sending by remember { mutableStateOf(false) }
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val prefs = remember { context.getSharedPreferences("agent_provider", 0) }
+    val mainHandler = remember { Handler(Looper.getMainLooper()) }
 
     MaterialTheme {
         Surface(Modifier.fillMaxSize(), color = Ink) {
@@ -101,10 +105,21 @@ private fun AgentStudioApp() {
                             onValueChange = { draft = it },
                             onSend = {
                                 val text = draft.trim()
-                                if (text.isNotEmpty()) {
+                                if (text.isNotEmpty() && !sending) {
                                     messages.add(ChatMessage(text, true))
                                     draft = ""
-                                    messages.add(ChatMessage("Provider ချိတ်ဆက်မှုနဲ့ real AI response ကို နောက်အဆင့်မှာ ဖွင့်ပါမယ်။ Settings မှာ API provider ကို အရင်သတ်မှတ်နိုင်ပါပြီ။", false))
+                                    sending = true
+                                    val history = messages.toList()
+                                    Thread {
+                                        val base = prefs.getString("base_url", "") ?: ""
+                                        val modelId = prefs.getString("model", "") ?: ""
+                                        val apiKey = SecretStore.read(context) ?: ""
+                                        val answer = requestChatCompletion(base, modelId, apiKey, history)
+                                        mainHandler.post {
+                                            sending = false
+                                            messages.add(ChatMessage(answer, false))
+                                        }
+                                    }.start()
                                 }
                             }
                         )
@@ -312,6 +327,41 @@ private fun testProvider(base: String, key: String): String {
         if (code in 200..299) "✓ Connected (HTTP $code). Models endpoint responded." else "Connection failed (HTTP $code): ${body.take(180)}"
     } catch (e: Exception) {
         "Connection error: ${e.message ?: "network error"}"
+    } finally {
+        connection?.disconnect()
+    }
+}
+
+
+private fun requestChatCompletion(base: String, model: String, key: String, history: List<ChatMessage>): String {
+    if (base.isBlank() || model.isBlank() || key.isBlank()) return "Settings မှာ Base URL, API Key နဲ့ Model ကို အရင်သတ်မှတ်ပါ။"
+    var connection: HttpURLConnection? = null
+    return try {
+        var root = base.trim().trimEnd('/')
+        if (!root.endsWith("/v1")) root += "/v1"
+        connection = (URL("$root/chat/completions").openConnection() as HttpURLConnection).apply {
+            requestMethod = "POST"
+            connectTimeout = 20000
+            readTimeout = 90000
+            doOutput = true
+            setRequestProperty("Authorization", "Bearer $key")
+            setRequestProperty("Content-Type", "application/json")
+            setRequestProperty("Accept", "application/json")
+        }
+        val messagesJson = org.json.JSONArray()
+        history.forEach { item ->
+            messagesJson.put(JSONObject().put("role", if (item.fromUser) "user" else "assistant").put("content", item.text))
+        }
+        val payload = JSONObject().put("model", model).put("messages", messagesJson)
+        connection.outputStream.use { it.write(payload.toString().toByteArray(Charsets.UTF_8)) }
+        val code = connection.responseCode
+        val stream = if (code in 200..299) connection.inputStream else connection.errorStream
+        val body = stream?.bufferedReader()?.use { it.readText() } ?: ""
+        if (code !in 200..299) return "API Error (HTTP $code): \${body.take(450)}"
+        JSONObject(body).optJSONArray("choices")?.optJSONObject(0)?.optJSONObject("message")
+            ?.optString("content")?.takeIf { it.isNotBlank() } ?: "Model က response မပြန်လာပါ။"
+    } catch (e: Exception) {
+        "Request failed: \${e.message ?: "network error"}"
     } finally {
         connection?.disconnect()
     }
