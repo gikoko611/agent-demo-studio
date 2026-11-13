@@ -8,6 +8,9 @@ import android.security.keystore.KeyProperties
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.animation.core.*
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -39,10 +42,13 @@ import javax.crypto.SecretKey
 import javax.crypto.spec.GCMParameterSpec
 import android.util.Base64
 
-private val Ink = Color(0xFF171717)
-private val Panel = Color(0xFF242424)
-private val Muted = Color(0xFF9B9B9B)
-private val Green = Color(0xFFB7D7C0)
+private val Ink = Color(0xFF070B16)
+private val Panel = Color(0xFF101A2C)
+private val Muted = Color(0xFF8FA5BD)
+private val Green = Color(0xFF39FF88)
+private val NeonBlue = Color(0xFF00D9FF)
+private val NeonRed = Color(0xFFFF3B6B)
+private val CyberLine = Color(0xFF203B55)
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -73,7 +79,7 @@ private fun AgentStudioApp() {
             if (page == "settings") {
                 ProviderSettingsScreen(onBack = { page = "chat" })
             } else {
-                Column(Modifier.fillMaxSize()) {
+                Column(Modifier.fillMaxSize().background(Brush.linearGradient(listOf(Color(0xFF070B16), Color(0xFF10152B), Color(0xFF071A22))))) {
                     TopBar(onSettings = { page = "settings" })
                     Row(
                         Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp),
@@ -132,13 +138,15 @@ private fun AgentStudioApp() {
 
 @Composable
 private fun TopBar(onSettings: () -> Unit) {
+    val pulse = rememberInfiniteTransition(label = "header-pulse")
+    val glow by pulse.animateFloat(initialValue = 0.35f, targetValue = 1f, animationSpec = infiniteRepeatable(tween(1400, easing = FastOutSlowInEasing), RepeatMode.Reverse), label = "glow")
     Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
         Column(Modifier.weight(1f)) {
-            Text("G.I KO KO", color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.Bold)
-            Text("CLAUDE AGENT STUDIO", color = Muted, fontSize = 10.sp, letterSpacing = 1.4.sp)
+            Text("G.I KO KO", color = Green.copy(alpha = glow), fontSize = 15.sp, fontWeight = FontWeight.Bold)
+            Text("CLAUDE AGENT STUDIO", color = NeonBlue, fontSize = 10.sp, letterSpacing = 1.4.sp)
         }
         IconButton(onClick = onSettings) { Icon(Icons.Default.Settings, "Settings", tint = Color.White) }
-        Box(Modifier.size(34.dp).background(Panel, CircleShape), contentAlignment = Alignment.Center) {
+        Box(Modifier.size(36.dp).background(Panel, CircleShape).border(1.dp, NeonBlue.copy(alpha = glow), CircleShape), contentAlignment = Alignment.Center) {
             Text("GI", color = Green, fontSize = 12.sp, fontWeight = FontWeight.Bold)
         }
     }
@@ -146,9 +154,9 @@ private fun TopBar(onSettings: () -> Unit) {
 
 @Composable
 private fun QuickAction(icon: androidx.compose.ui.graphics.vector.ImageVector, label: String, onClick: () -> Unit) {
-    Surface(onClick = onClick, color = Panel, shape = RoundedCornerShape(18.dp)) {
+    Surface(onClick = onClick, color = Panel, shape = RoundedCornerShape(18.dp), border = androidx.compose.foundation.BorderStroke(1.dp, (if (label == "Agent") NeonRed else if (label == "Settings") NeonBlue else Green).copy(alpha = 0.55f))) {
         Row(Modifier.padding(horizontal = 12.dp, vertical = 9.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            Icon(icon, null, tint = Muted, modifier = Modifier.size(15.dp))
+            Icon(icon, null, tint = if (label == "Agent") NeonRed else if (label == "Settings") NeonBlue else Green, modifier = Modifier.size(15.dp))
             Text(label, color = Color(0xFFE2E2E2), fontSize = 12.sp)
         }
     }
@@ -159,9 +167,9 @@ private fun MessageBubble(message: ChatMessage) {
     Row(Modifier.fillMaxWidth(), horizontalArrangement = if (message.fromUser) Arrangement.End else Arrangement.Start) {
         Column(
             Modifier.fillMaxWidth(if (message.fromUser) 0.88f else 0.96f)
-                .background(if (message.fromUser) Color(0xFF303030) else Panel, RoundedCornerShape(18.dp)).padding(14.dp)
+                .background(if (message.fromUser) Color(0xFF172438) else Panel, RoundedCornerShape(18.dp)).border(1.dp, (if (message.fromUser) NeonBlue else Green).copy(alpha = 0.42f), RoundedCornerShape(18.dp)).padding(14.dp)
         ) {
-            Text(if (message.fromUser) "You" else "G.I KO KO Agent", color = if (message.fromUser) Green else Muted, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+            Text(if (message.fromUser) "You" else "G.I KO KO Agent", color = if (message.fromUser) NeonBlue else Green, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
             Spacer(Modifier.height(6.dp))
             Text(message.text, color = Color(0xFFF0F0F0), fontSize = 14.sp, lineHeight = 21.sp)
         }
@@ -170,7 +178,9 @@ private fun MessageBubble(message: ChatMessage) {
 
 @Composable
 private fun Composer(value: String, onValueChange: (String) -> Unit, onSend: () -> Unit) {
-    Column(Modifier.fillMaxWidth().padding(12.dp).background(Panel, RoundedCornerShape(22.dp)).padding(12.dp)) {
+    val pulse = rememberInfiniteTransition(label = "composer-pulse")
+    val glow by pulse.animateFloat(initialValue = 0.25f, targetValue = 0.8f, animationSpec = infiniteRepeatable(tween(1800), RepeatMode.Reverse), label = "composer-glow")
+    Column(Modifier.fillMaxWidth().padding(12.dp).background(Panel, RoundedCornerShape(22.dp)).border(1.dp, NeonBlue.copy(alpha = glow), RoundedCornerShape(22.dp)).padding(12.dp)) {
         BasicTextField(
             value = value, onValueChange = onValueChange, modifier = Modifier.fillMaxWidth().padding(4.dp),
             textStyle = androidx.compose.ui.text.TextStyle(color = Color.White, fontSize = 14.sp, lineHeight = 20.sp),
@@ -182,7 +192,7 @@ private fun Composer(value: String, onValueChange: (String) -> Unit, onSend: () 
             IconButton(onClick = {}) { Icon(Icons.Default.AttachFile, "Attach file", tint = Muted) }
             Text("Agent mode · Approval required", color = Muted, fontSize = 10.sp, modifier = Modifier.weight(1f))
             IconButton(onClick = onSend) {
-                Icon(Icons.Default.Send, "Send", tint = Color(0xFF202020), modifier = Modifier.background(Green, CircleShape).padding(9.dp))
+                Icon(Icons.Default.Send, "Send", tint = Color(0xFF06101A), modifier = Modifier.background(Brush.linearGradient(listOf(Green, NeonBlue)), CircleShape).padding(9.dp))
             }
         }
     }
@@ -262,7 +272,7 @@ private fun ProviderSettingsScreen(onBack: () -> Unit) {
                     } catch (e: Exception) {
                         status = "Secure storage error: ${e.message ?: "unknown"}"
                     }
-                }, color = if (model == item.id) Color(0xFF35483D) else Panel, shape = RoundedCornerShape(12.dp)) {
+                }, color = if (model == item.id) Color(0xFF153B38) else Panel, shape = RoundedCornerShape(12.dp)) {
                     Column(Modifier.fillMaxWidth().padding(11.dp)) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Text(item.name, color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
