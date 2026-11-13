@@ -237,7 +237,7 @@ private fun ProviderSettingsScreen(onBack: () -> Unit) {
                         status = when {
                             found.isEmpty() -> "Model list မရရှိပါ။ Base URL / API Key ကိုစစ်ပါ။"
                             models.isEmpty() -> "Free အဖြစ် အတည်ပြုထားတဲ့ model မတွေ့ပါ။ Free only ကိုပိတ်ပြီး စစ်ပါ။"
-                            else -> "\${models.size} models တွေ့ရှိပါတယ်။ တစ်ခုကိုနှိပ်ပြီး ရွေးပါ။"
+                            else -> "${models.size} models တွေ့ရှိပါတယ်။ တစ်ခုကိုနှိပ်ပြီး ရွေးပါ။"
                         }
                     }
                 }.start()
@@ -256,7 +256,7 @@ private fun ProviderSettingsScreen(onBack: () -> Unit) {
                 SecretStore.write(context, apiKey)
                 status = "Model ကို သိမ်းပြီးပါပြီ။ Chat မှာ သုံးနိုင်ပါပြီ။"
             } catch (e: Exception) {
-                status = "Secure storage error: \${e.message ?: "unknown"}"
+                status = "Secure storage error: ${e.message ?: "unknown"}"
             }
         }, modifier = Modifier.fillMaxWidth()) { Text("Save Provider & Model") }
         Text(status, color = Muted, fontSize = 12.sp, lineHeight = 16.sp)
@@ -316,7 +316,7 @@ private fun discoverModels(base: String, key: String): List<ModelOption> {
             val name = obj.optString("name").takeIf { it.isNotBlank() } ?: id
             val contextLength = obj.optInt("context_length", 0)
             val detail = buildString {
-                if (contextLength > 0) append("Context: \${contextLength / 1000}K")
+                if (contextLength > 0) append("Context: ${contextLength / 1000}K")
                 if (zeroPrice) append(if (isNotEmpty()) " · " else "").append("API pricing: \\$0")
                 else if (id.endsWith(":free", true)) append(if (isNotEmpty()) " · " else "").append("Free variant")
             }
@@ -378,11 +378,11 @@ private fun requestChatCompletion(base: String, model: String, key: String, hist
         val code = connection.responseCode
         val stream = if (code in 200..299) connection.inputStream else connection.errorStream
         val body = stream?.bufferedReader()?.use { it.readText() } ?: ""
-        if (code !in 200..299) return "API Error (HTTP $code): \${body.take(450)}"
+        if (code !in 200..299) return "API Error (HTTP $code): ${body.take(450)}"
         JSONObject(body).optJSONArray("choices")?.optJSONObject(0)?.optJSONObject("message")
             ?.optString("content")?.takeIf { it.isNotBlank() } ?: "Model က response မပြန်လာပါ။"
     } catch (e: Exception) {
-        "Request failed: \${e.message ?: "network error"}"
+        "Request failed: ${e.message ?: "network error"}"
     } finally {
         connection?.disconnect()
     }
