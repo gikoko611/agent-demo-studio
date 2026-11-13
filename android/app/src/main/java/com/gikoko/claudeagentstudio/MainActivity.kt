@@ -52,6 +52,7 @@ class MainActivity : ComponentActivity() {
 }
 
 private data class ChatMessage(val text: String, val fromUser: Boolean)
+private data class ModelOption(val id: String, val name: String, val free: Boolean, val details: String)
 
 @Composable
 private fun AgentStudioApp() {
@@ -177,53 +178,119 @@ private fun ProviderSettingsScreen(onBack: () -> Unit) {
     val context = androidx.compose.ui.platform.LocalContext.current
     val prefs = remember { context.getSharedPreferences("agent_provider", 0) }
     var provider by remember { mutableStateOf(prefs.getString("provider", "OpenAI-compatible") ?: "OpenAI-compatible") }
-    var baseUrl by remember { mutableStateOf(prefs.getString("base_url", "https://api.openai.com/v1") ?: "") }
-    var model by remember { mutableStateOf(prefs.getString("model", "gpt-4o-mini") ?: "") }
+    var baseUrl by remember { mutableStateOf(prefs.getString("base_url", "https://openrouter.ai/api/v1") ?: "") }
+    var model by remember { mutableStateOf(prefs.getString("model", "") ?: "") }
     var apiKey by remember { mutableStateOf(SecretStore.read(context) ?: "") }
-    var status by remember { mutableStateOf("API provider ကို သတ်မှတ်ပါ။ Key ကို Android Keystore ဖြင့် encrypt လုပ်သိမ်းပါမည်။") }
+    var status by remember { mutableStateOf("Provider API ကို ချိတ်ဆက်ပြီး Free models ကို ရှာနိုင်ပါတယ်။") }
     var busy by remember { mutableStateOf(false) }
+    var freeOnly by remember { mutableStateOf(true) }
+    var models by remember { mutableStateOf(listOf<ModelOption>()) }
     val mainHandler = remember { Handler(Looper.getMainLooper()) }
 
-    Column(Modifier.fillMaxSize().padding(18.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+    Column(Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             IconButton(onClick = onBack) { Icon(Icons.Default.ArrowBack, "Back", tint = Color.White) }
-            Text("Provider Settings", color = Color.White, fontSize = 21.sp, fontWeight = FontWeight.Bold)
+            Text("Provider & Model Settings", color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.Bold)
         }
-        Text("OpenAI-compatible API", color = Green, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
         OutlinedTextField(value = provider, onValueChange = { provider = it }, label = { Text("Provider name") }, singleLine = true, modifier = Modifier.fillMaxWidth())
-        OutlinedTextField(value = baseUrl, onValueChange = { baseUrl = it }, label = { Text("Base URL") }, placeholder = { Text("https://api.example.com/v1") }, singleLine = true, modifier = Modifier.fillMaxWidth())
-        OutlinedTextField(value = model, onValueChange = { model = it }, label = { Text("Model ID") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+        OutlinedTextField(value = baseUrl, onValueChange = { baseUrl = it }, label = { Text("Base URL") }, singleLine = true, modifier = Modifier.fillMaxWidth())
         OutlinedTextField(value = apiKey, onValueChange = { apiKey = it }, label = { Text("API Key") }, singleLine = true, modifier = Modifier.fillMaxWidth(), visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation())
-        Text(status, color = Muted, fontSize = 12.sp, lineHeight = 18.sp)
-        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            Button(
-                enabled = !busy && baseUrl.isNotBlank() && model.isNotBlank(),
-                onClick = {
-                    prefs.edit().putString("provider", provider).putString("base_url", baseUrl.trim()).putString("model", model.trim()).apply()
-                    try {
-                        SecretStore.write(context, apiKey)
-                        status = "Provider settings ကို ဖုန်းထဲမှာ သိမ်းပြီးပါပြီ။"
-                    } catch (e: Exception) {
-                        status = "Secure storage error: ${e.message ?: "unknown"}"
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Button(enabled = !busy && baseUrl.isNotBlank() && apiKey.isNotBlank(), onClick = {
+                busy = true
+                status = "Models ရှာဖွေနေပါတယ်…"
+                val b = baseUrl.trim()
+                val k = apiKey
+                val onlyFree = freeOnly
+                Thread {
+                    val found = discoverModels(b, k)
+                    mainHandler.post {
+                        busy = false
+                        models = if (onlyFree) found.filter { it.free } else found
+                        status = when {
+                            found.isEmpty() -> "Model list မရရှိပါ။ Base URL / API Key ကိုစစ်ပါ။"
+                            models.isEmpty() -> "Free အဖြစ် အတည်ပြုထားတဲ့ model မတွေ့ပါ။ Free only ကိုပိတ်ပြီး စစ်ပါ။"
+                            else -> "\${models.size} models တွေ့ရှိပါတယ်။ တစ်ခုကိုနှိပ်ပြီး ရွေးပါ။"
+                        }
+                    }
+                }.start()
+            }) { Text(if (busy) "Searching…" else "Find Models") }
+            Spacer(Modifier.width(6.dp))
+            Text("Free only", color = Color.White, fontSize = 12.sp)
+            Checkbox(checked = freeOnly, onCheckedChange = {
+                freeOnly = it
+                models = if (it) models.filter { m -> m.free } else models
+            })
+        }
+        OutlinedTextField(value = model, onValueChange = { model = it }, label = { Text("Selected Model ID") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+        Button(enabled = baseUrl.isNotBlank() && model.isNotBlank(), onClick = {
+            prefs.edit().putString("provider", provider).putString("base_url", baseUrl.trim()).putString("model", model.trim()).apply()
+            try {
+                SecretStore.write(context, apiKey)
+                status = "Model ကို သိမ်းပြီးပါပြီ။ Chat မှာ သုံးနိုင်ပါပြီ။"
+            } catch (e: Exception) {
+                status = "Secure storage error: \${e.message ?: "unknown"}"
+            }
+        }, modifier = Modifier.fillMaxWidth()) { Text("Save Provider & Model") }
+        Text(status, color = Muted, fontSize = 12.sp, lineHeight = 16.sp)
+        Text("Available Models · Tap to select", color = Green, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+        LazyColumn(Modifier.weight(1f).fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(7.dp)) {
+            items(models, key = { it.id }) { item ->
+                Surface(onClick = { model = item.id }, color = if (model == item.id) Color(0xFF35483D) else Panel, shape = RoundedCornerShape(12.dp)) {
+                    Column(Modifier.fillMaxWidth().padding(11.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(item.name, color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
+                            if (item.free) Text("FREE", color = Green, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                            if (model == item.id) Text(" ✓", color = Green)
+                        }
+                        Text(item.id, color = Muted, fontSize = 10.sp)
+                        if (item.details.isNotBlank()) Text(item.details, color = Muted, fontSize = 10.sp)
                     }
                 }
-            ) { Text("Save") }
-            OutlinedButton(
-                enabled = !busy && baseUrl.isNotBlank() && apiKey.isNotBlank(),
-                onClick = {
-                    busy = true
-                    status = "Connection စမ်းသပ်နေပါတယ်…"
-                    Thread {
-                        val result = testProvider(baseUrl, apiKey)
-                        mainHandler.post {
-                            busy = false
-                            status = result
-                        }
-                    }.start()
-                }
-            ) { Text(if (busy) "Testing…" else "Test Connection") }
+            }
         }
-        Text("မှတ်ချက်: Connection Test သည် /models endpoint ကိုသာ စမ်းသပ်သည်။ Chat completion နှင့် Agent execution ကို မချိတ်ဆက်ရသေးပါ။", color = Muted, fontSize = 11.sp, lineHeight = 17.sp)
+        Text("Free ကို API pricing $0/$0 သို့မဟုတ် :free ID ရှိမှသာ သတ်မှတ်မယ်။ Pricing မပေးတဲ့ provider ကို Free လို့ မခန့်မှန်းပါ။", color = Muted, fontSize = 10.sp, lineHeight = 14.sp)
+    }
+}
+
+private fun discoverModels(base: String, key: String): List<ModelOption> {
+    var connection: HttpURLConnection? = null
+    return try {
+        var root = base.trim().trimEnd('/')
+        if (!root.endsWith("/v1")) root += "/v1"
+        connection = (URL("$root/models").openConnection() as HttpURLConnection).apply {
+            requestMethod = "GET"
+            connectTimeout = 15000
+            readTimeout = 20000
+            setRequestProperty("Authorization", "Bearer $key")
+            setRequestProperty("Accept", "application/json")
+        }
+        if (connection.responseCode !in 200..299) return emptyList()
+        val json = JSONObject(connection.inputStream.bufferedReader().use { it.readText() })
+        val data = json.optJSONArray("data") ?: return emptyList()
+        val found = mutableListOf<ModelOption>()
+        for (i in 0 until data.length()) {
+            val obj = data.optJSONObject(i) ?: continue
+            val id = obj.optString("id").takeIf { it.isNotBlank() } ?: continue
+            val pricing = obj.optJSONObject("pricing")
+            val prompt = pricing?.optString("prompt", null)
+            val completion = pricing?.optString("completion", null)
+            val zeroPrice = prompt != null && completion != null && prompt.toDoubleOrNull() == 0.0 && completion.toDoubleOrNull() == 0.0
+            val free = id.endsWith(":free", true) || zeroPrice
+            val name = obj.optString("name").takeIf { it.isNotBlank() } ?: id
+            val contextLength = obj.optInt("context_length", 0)
+            val detail = buildString {
+                if (contextLength > 0) append("Context: \${contextLength / 1000}K")
+                if (zeroPrice) append(if (isNotEmpty()) " · " else "").append("API pricing: $0")
+                else if (id.endsWith(":free", true)) append(if (isNotEmpty()) " · " else "").append("Free variant")
+            }
+            found.add(ModelOption(id, name, free, detail))
+        }
+        found.sortedWith(compareByDescending<ModelOption> { it.free }.thenBy { it.name.lowercase() })
+    } catch (_: Exception) {
+        emptyList()
+    } finally {
+        connection?.disconnect()
     }
 }
 
