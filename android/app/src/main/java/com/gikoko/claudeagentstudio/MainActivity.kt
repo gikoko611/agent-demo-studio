@@ -307,7 +307,7 @@ private fun discoverModels(base: String, key: String): List<ModelOption> {
             val contextLength = obj.optInt("context_length", 0)
             val detail = buildString {
                 if (contextLength > 0) append("Context: \${contextLength / 1000}K")
-                if (zeroPrice) append(if (isNotEmpty()) " · " else "").append("API pricing: $0")
+                if (zeroPrice) append(if (isNotEmpty()) " · " else "").append("API pricing: \\$0")
                 else if (id.endsWith(":free", true)) append(if (isNotEmpty()) " · " else "").append("Free variant")
             }
             found.add(ModelOption(id, name, free, detail))
